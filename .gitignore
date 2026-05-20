@@ -25,3 +25,4 @@ models/piper/*.onnx.json
 .DS_Store
 
 .Rhistory
+CLAUDE.md
