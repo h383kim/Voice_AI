@@ -36,7 +36,9 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001 - keep server up, report via health
         logger.warning("Failed to load STT model: %s", exc)
 
-    app.state.llm = LLMService(config.OLLAMA_BASE_URL, config.OLLAMA_MODEL)
+    app.state.llm = LLMService(
+        config.OLLAMA_BASE_URL, config.OLLAMA_MODEL, router_model=config.ROUTER_MODEL
+    )
     app.state.tts = TTSService(config.PIPER_VOICE_MODEL)
     try:
         logger.info("Loading Piper voice %s ...", config.PIPER_VOICE_MODEL)

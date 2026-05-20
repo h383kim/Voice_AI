@@ -25,6 +25,8 @@ STT_COMPUTE_TYPE = os.getenv("STT_COMPUTE_TYPE", "int8")
 # --- LLM (Ollama) ---
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+# Model used for the cheap action-vs-chat router; point at a smaller model to cut latency.
+ROUTER_MODEL = os.getenv("ROUTER_MODEL", OLLAMA_MODEL)
 
 # --- TTS (piper-tts pip package; only a voice model is required) ---
 PIPER_VOICE_MODEL = _path(
@@ -60,6 +62,13 @@ OPEN_APP_ALLOWLIST = [
     ).split(",")
     if a.strip()
 ]
+
+# iMessage sending (most sensitive tool; can be disabled).
+IMESSAGE_ENABLED = os.getenv("IMESSAGE_ENABLED", "true").lower() in ("1", "true", "yes")
+CONTACTS_MAX_RESULTS = int(os.getenv("CONTACTS_MAX_RESULTS", "5"))
+# Applied to spoken/national-format numbers (e.g. "+82" -> 010 1234 5678 becomes
+# +821012345678). Empty = leave numbers as dialed.
+DEFAULT_COUNTRY_CODE = os.getenv("DEFAULT_COUNTRY_CODE", "").strip()
 
 
 def ensure_dirs() -> None:

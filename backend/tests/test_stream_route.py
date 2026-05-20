@@ -4,7 +4,6 @@ import json
 import types
 import wave
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -19,13 +18,22 @@ class _FakeSTT:
 
 
 class _FakeLLM:
-    """Scripted assistant messages, one per chat() call."""
+    """Configurable router + scripted agent/chat responses."""
 
-    def __init__(self, scripted):
-        self._scripted = list(scripted)
+    def __init__(self, needs_tools, chat_script=None, stream_deltas=None):
+        self._needs_tools = needs_tools
+        self._chat_script = list(chat_script or [])
+        self._stream_deltas = list(stream_deltas or [])
+
+    def classify_needs_tools(self, user_text):
+        return self._needs_tools
 
     def chat(self, messages, tools=None):
-        return self._scripted.pop(0)
+        return self._chat_script.pop(0)
+
+    def generate_response_stream(self, session_id, user_text):
+        for d in self._stream_deltas:
+            yield d
 
 
 class _FakeTTS:
@@ -49,7 +57,7 @@ def _tiny_wav_bytes() -> bytes:
     return buf.getvalue()
 
 
-def _build_client(monkeypatch, scripted):
+def _build_client(monkeypatch, llm):
     monkeypatch.setattr(
         routes, "normalize_audio", lambda *a, **k: types.SimpleNamespace(duration_sec=0.1)
     )
@@ -57,7 +65,7 @@ def _build_client(monkeypatch, scripted):
     app = FastAPI()
     app.include_router(router)
     app.state.stt = _FakeSTT()
-    app.state.llm = _FakeLLM(scripted)
+    app.state.llm = llm
     app.state.tts = _FakeTTS()
     return TestClient(app)
 
@@ -70,7 +78,6 @@ def _post_stream(client):
 
 
 def _event_data(body, event):
-    """Return the parsed data dict for the first SSE block of `event`."""
     for block in body.split("\n\n"):
         if f"event: {event}" in block:
             for line in block.split("\n"):
@@ -79,37 +86,38 @@ def _event_data(body, event):
     return None
 
 
-def test_plain_answer_streams_in_order(monkeypatch):
-    client = _build_client(monkeypatch, [{"content": "Hello there. How are you?"}])
-    body = _post_stream(client).text
-    assert body.index("event: meta") < body.index("event: transcript")
-    assert body.index("event: transcript") < body.index("event: delta")
-    assert body.index("event: delta") < body.index("event: done")
-    assert "hello world" in body
-    done = _event_data(body, "done")
-    assert done["assistant_response"] == "Hello there. How are you?"
+def test_router_chat_path_skips_tools(monkeypatch):
+    # Router says CHAT -> plain token streaming, no tools.
+    llm = _FakeLLM(needs_tools=False, stream_deltas=["Hello ", "there. ", "How are you?"])
+    body = _post_stream(_build_client(monkeypatch, llm)).text
+    assert "event: tool" not in body
+    assert "event: tool_request" not in body
+    assert body.index("event: transcript") < body.index("event: delta") < body.index("event: done")
+    assert _event_data(body, "done")["assistant_response"] == "Hello there. How are you?"
 
 
-def test_auto_tool_emits_tool_event(monkeypatch):
-    client = _build_client(
-        monkeypatch,
-        [_tool_call("notify", {"message": "hi"}), {"content": "Sent it."}],
+def test_router_action_path_runs_tool(monkeypatch):
+    llm = _FakeLLM(
+        needs_tools=True,
+        chat_script=[_tool_call("notify", {"message": "hi"}), {"content": "Sent it."}],
     )
-    body = _post_stream(client).text
-    assert "event: tool" in body
-    tool = _event_data(body, "tool")
-    assert tool["name"] == "notify"
+    body = _post_stream(_build_client(monkeypatch, llm)).text
+    assert _event_data(body, "tool")["name"] == "notify"
     assert _event_data(body, "done")["assistant_response"] == "Sent it."
 
 
 def test_confirm_flow_tool_request_then_resume(monkeypatch):
-    client = _build_client(
-        monkeypatch,
-        [_tool_call("open_url", {"url": "https://example.com"}), {"content": "Opened it."}],
+    llm = _FakeLLM(
+        needs_tools=True,
+        chat_script=[
+            _tool_call("open_url", {"url": "https://example.com"}),
+            {"content": "Opened it."},
+        ],
     )
+    client = _build_client(monkeypatch, llm)
     body = _post_stream(client).text
     assert "event: tool_request" in body
-    assert "event: done" not in body  # paused, not finished
+    assert "event: done" not in body
     req = _event_data(body, "tool_request")
     assert req["name"] == "open_url" and req["pending_id"]
 

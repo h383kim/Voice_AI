@@ -8,6 +8,8 @@ class TimingInfo(BaseModel):
     audio_save_ms: float = 0
     audio_normalization_ms: float = 0
     stt_ms: float = 0
+    # Action-vs-chat router pre-check (streaming only).
+    router_ms: float = 0
     llm_ms: float = 0
     tts_ms: float = 0
     # Request -> first audio chunk; the key real-time metric (streaming only).

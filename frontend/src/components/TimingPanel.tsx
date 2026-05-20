@@ -7,6 +7,7 @@ interface TimingPanelProps {
 export function TimingPanel({ timing }: TimingPanelProps) {
   const rows: [string, number][] = [
     ["STT", timing.stt_ms],
+    ["Router", timing.router_ms],
     ["LLM", timing.llm_ms],
     ["TTS", timing.tts_ms],
     ["First audio", timing.first_audio_ms],

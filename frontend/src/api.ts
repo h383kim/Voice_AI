@@ -5,6 +5,7 @@ export interface TimingInfo {
   audio_save_ms: number;
   audio_normalization_ms: number;
   stt_ms: number;
+  router_ms: number;
   llm_ms: number;
   tts_ms: number;
   first_audio_ms: number;

@@ -114,6 +114,41 @@ def test_generate_response_stream_unavailable(monkeypatch):
     session_service.reset(sid)
 
 
+def test_classify_needs_tools(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json, timeout):
+        captured["json"] = json
+        content = "ACTION" if "open" in json["messages"][-1]["content"] else "CHAT"
+        return _FakeResponse(payload={"message": {"content": content}})
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    svc = LLMService("http://localhost:11434", "llama3.2:3b", router_model="llama3.2:1b")
+
+    assert svc.classify_needs_tools("open the calculator") is True
+    assert svc.classify_needs_tools("what is the capital of France") is False
+    # Uses the router model + non-streaming + a small output cap.
+    assert captured["json"]["model"] == "llama3.2:1b"
+    assert captured["json"]["stream"] is False
+    assert captured["json"]["options"]["num_predict"] <= 5
+
+
+def test_classify_unclear_defaults_to_chat(monkeypatch):
+    monkeypatch.setattr(
+        requests, "post", lambda *a, **k: _FakeResponse(payload={"message": {"content": "hmm"}})
+    )
+    assert LLMService("http://x", "m").classify_needs_tools("hello") is False
+
+
+def test_classify_unavailable(monkeypatch):
+    def boom(*a, **k):
+        raise requests.ConnectionError()
+
+    monkeypatch.setattr(requests, "post", boom)
+    with pytest.raises(LLMUnavailableError):
+        LLMService("http://x", "m").classify_needs_tools("hi")
+
+
 def test_is_available(monkeypatch):
     monkeypatch.setattr(requests, "get", lambda *a, **k: _FakeResponse(status_code=200))
     assert LLMService("http://x", "m").is_available() is True

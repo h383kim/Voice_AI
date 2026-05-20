@@ -245,7 +245,7 @@ def _emit_agent_stream(
             "response_chars": len(assistant_text),
             **{k: timing.get(k, 0) for k in (
                 "audio_save_ms", "audio_normalization_ms", "stt_ms",
-                "llm_ms", "tts_ms", "first_audio_ms", "total_ms",
+                "router_ms", "llm_ms", "tts_ms", "first_audio_ms", "total_ms",
             )},
             "stt_model": config.STT_MODEL_NAME,
             "llm_model": config.OLLAMA_MODEL,
@@ -326,8 +326,21 @@ async def voice_turn_stream(
             return
         yield _sse("transcript", {"text": stt_result.text})
 
-        # 4) Agent (LLM + tools) -> 5) per-sentence TTS.
+        # 4) Router: only offer tools when the turn actually needs an action.
+        use_tools = False
         if config.TOOLS_ENABLED:
+            try:
+                with timer("router_ms", timing):
+                    use_tools = llm.classify_needs_tools(stt_result.text)
+            except LLMUnavailableError as exc:
+                yield _sse("error", {"error": "llm_unavailable", "message": str(exc)})
+                return
+            except LLMError as exc:
+                yield _sse("error", {"error": "llm_error", "message": str(exc)})
+                return
+
+        # 5) ACTION -> agent (tools); CHAT -> plain token streaming. Then per-sentence TTS.
+        if use_tools:
             yield from _emit_agent_stream(
                 agent_service.run_agent(llm, session_id, stt_result.text),
                 tts=tts,
@@ -339,7 +352,7 @@ async def voice_turn_stream(
             )
             return
 
-        # --- no-tools fallback: token-by-token streaming ---
+        # --- no-tools path: token-by-token streaming ---
         chunker = SentenceChunker()
         assistant_parts: list[str] = []
         tts_ms = 0.0
@@ -391,7 +404,7 @@ async def voice_turn_stream(
                 "response_chars": len(assistant_text),
                 **{k: timing.get(k, 0) for k in (
                     "audio_save_ms", "audio_normalization_ms", "stt_ms",
-                    "llm_ms", "tts_ms", "first_audio_ms", "total_ms",
+                    "router_ms", "llm_ms", "tts_ms", "first_audio_ms", "total_ms",
                 )},
                 "stt_model": config.STT_MODEL_NAME,
                 "llm_model": config.OLLAMA_MODEL,
