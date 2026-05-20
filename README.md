@@ -125,8 +125,15 @@ Available actions:
 | --- | --- | --- |
 | `notify` | macOS desktop notification | auto-runs |
 | `music` | play / pause / next / previous / volume (Music app) | auto-runs |
+| `find_contact` | look up a person in macOS Contacts → phone/email | auto-runs (read-only) |
 | `open_url` | open an http/https URL in the browser | **Allow/Deny** |
 | `open_app` | launch an allowlisted app | **Allow/Deny** |
+| `send_imessage` | send an iMessage to a resolved handle | **Allow/Deny** |
+
+**When does it use tools?** Each turn first runs a tiny **router** classification
+(action vs. chat), so plain questions are answered normally and never trigger a
+tool. Point `ROUTER_MODEL` at a smaller model (e.g. `llama3.2:1b`) to cut the
+router's latency; the cost shows up as `router_ms` in the timing panel/logs.
 
 **Hybrid safety model:** harmless actions run immediately; side-effecting ones
 (`open_url`, `open_app`) pause and wait for you to click **Allow** or **Deny** in
@@ -135,7 +142,40 @@ the UI. All actions validate inputs regardless — URLs must be http/https, and
 to `osascript`/`open` as argv (never shell-interpolated), so there's no injection.
 
 Example phrases: "send a notification that says tea is ready", "pause the music",
-"set the volume to 30", "open hacker news", "open the calculator".
+"set the volume to 30", "open hacker news", "open the calculator",
+"text Sarah Kim that I'm running ten minutes late".
+
+**Messaging (iMessage):** you can address the recipient two ways — by **name**
+(the agent calls `find_contact` to read macOS Contacts and resolve a phone/email)
+or by **speaking the number directly** ("text zero one zero, one two three four,
+five six seven eight, saying I'm on my way"). Either way it pauses for **Allow/Deny**
+showing the final recipient and message. Notes specific to dictating a number:
+- **Check the number on the Allow card before approving** — the English STT can
+  mishear a digit. The card shows the normalized number; that's your safety check.
+- Set `DEFAULT_COUNTRY_CODE` (e.g. `+82` for Korea) so a domestic-format number
+  like `010 1234 5678` becomes `+821012345678`, which Messages can resolve.
+- `send_imessage` only sends **iMessage**; a number that isn't an iMessage user
+  (common in Korea, where SMS/KakaoTalk dominate) returns a clear error rather than
+  delivering.
+
+Other notes:
+- **Permissions:** the first lookup and the first send each trigger a macOS
+  Automation prompt (System Settings → Privacy & Security → Automation) for
+  **Contacts** and **Messages** respectively — approve them or the tool errors with
+  a hint.
+- **Reliability:** there is no official Apple API — sending drives Messages.app via
+  AppleScript/Apple Events (`osascript`), which is finicky. Phone handles are
+  normalized (formatting stripped), but Messages matches best on **full
+  international numbers** (e.g. `+15551234567`), so store those in Contacts. Set
+  `IMESSAGE_ENABLED=false` to disable sending entirely.
+- **Troubleshooting:** if a send fails, the assistant now reports the real error
+  instead of a false "Sent." To debug in isolation (no LLM needed), run:
+  ```bash
+  bash scripts/test_imessage.sh "+15551234567" "test message"
+  ```
+  It prints `OK`, or `ERR <num>: <reason>` — e.g. `-1743` = grant Automation
+  permission (Messages), `-1728` = recipient couldn't be resolved (use the full
+  +country-code number).
 
 > Requires macOS (uses `osascript`/`open`) and Ollama running. Set
 > `TOOLS_ENABLED=false` to disable tools entirely (falls back to token-by-token
@@ -148,7 +188,8 @@ Example phrases: "send a notification that says tea is ready", "pause the music"
 All settings have defaults and can be overridden via environment variables
 (see `.env.example`): `STT_MODEL_NAME`, `STT_DEVICE`, `STT_COMPUTE_TYPE`,
 `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `PIPER_VOICE_MODEL`, `DATA_DIR`,
-`CORS_ORIGINS`, `TOOLS_ENABLED`, `TOOLS_MAX_ITERS`, `OPEN_APP_ALLOWLIST`.
+`CORS_ORIGINS`, `TOOLS_ENABLED`, `TOOLS_MAX_ITERS`, `OPEN_APP_ALLOWLIST`,
+`IMESSAGE_ENABLED`, `CONTACTS_MAX_RESULTS`, `DEFAULT_COUNTRY_CODE`, `ROUTER_MODEL`.
 Per-turn logs are appended to `data/logs/voice_turns.jsonl`.
 
 ## Known limitations

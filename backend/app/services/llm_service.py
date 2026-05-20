@@ -18,9 +18,25 @@ SYSTEM_PROMPT = (
     "Avoid markdown unless necessary.\n"
     "Keep answers under 4 sentences unless the user asks for detail.\n"
     "You can control the user's Mac with the provided tools (notifications, "
-    "opening URLs/apps, music). When the user asks you to DO something, call the "
-    "appropriate tool rather than only describing it. After a tool runs, confirm "
-    "what you did in one short sentence."
+    "opening URLs/apps, music, and sending iMessages). When the user asks you to DO "
+    "something, call the appropriate tool rather than only describing it. "
+    "To text someone: if the user gives a NAME, call find_contact first to get the "
+    "handle, then call send_imessage with that handle plus a display_name. If the "
+    "user gives a PHONE NUMBER directly (including spelled-out digits like 'zero one "
+    "zero...'), call send_imessage with that number as 'to' — no find_contact needed. "
+    "Only use a number the user actually said; never invent one. "
+    "Only call a tool when the user is asking you to perform that "
+    "action; otherwise just answer. After a tool runs, confirm what you did in one "
+    "short sentence. If a tool result begins with 'Error', tell the user it failed "
+    "and briefly why — never claim success when a tool failed."
+)
+
+ROUTER_SYSTEM_PROMPT = (
+    "Classify the user's request. Reply with ONE word only:\n"
+    "ACTION - if it asks you to perform a device action (send/text a message, open a "
+    "URL or app, control music/volume, show a notification, or look up a contact).\n"
+    "CHAT - for questions, conversation, or anything else.\n"
+    "Reply with exactly ACTION or CHAT and nothing else."
 )
 
 
@@ -33,10 +49,44 @@ class LLMError(Exception):
 
 
 class LLMService:
-    def __init__(self, base_url: str, model: str, timeout: float = 60.0):
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        timeout: float = 60.0,
+        router_model: str | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.router_model = router_model or model
+
+    def classify_needs_tools(self, user_text: str) -> bool:
+        """Quick router: does this turn need a device action (vs. just chat)?
+
+        Returns True for ACTION, False for CHAT (and on unclear replies).
+        """
+        payload = {
+            "model": self.router_model,
+            "messages": [
+                {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_text},
+            ],
+            "stream": False,
+            "options": {"temperature": 0, "num_predict": 5},
+        }
+        try:
+            resp = requests.post(
+                f"{self.base_url}/api/chat", json=payload, timeout=self.timeout
+            )
+        except requests.RequestException as exc:
+            raise LLMUnavailableError(
+                f"Could not connect to Ollama at {self.base_url}"
+            ) from exc
+        if resp.status_code != 200:
+            raise LLMError(f"Ollama returned {resp.status_code}: {resp.text[:300]}")
+        content = (resp.json().get("message", {}) or {}).get("content", "")
+        return "action" in content.lower()
 
     def is_available(self) -> bool:
         """Quick liveness check used by the health endpoint."""
