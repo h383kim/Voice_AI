@@ -23,3 +23,5 @@ models/piper/*.onnx.json
 
 # OS
 .DS_Store
+
+.Rhistory

@@ -10,6 +10,10 @@ function describe(req: ToolRequest): string {
   const args = req.args || {};
   if (req.name === "open_url") return `Open this URL: ${args.url}`;
   if (req.name === "open_app") return `Launch this app: ${args.name}`;
+  if (req.name === "send_imessage") {
+    const who = (args.display_name as string) || (args.to as string);
+    return `Send iMessage to ${who}: "${args.message}"`;
+  }
   return `${req.name}(${JSON.stringify(args)})`;
 }
 

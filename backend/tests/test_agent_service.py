@@ -109,3 +109,29 @@ def test_max_iters_cap(monkeypatch):
 def test_expired_pending_id():
     events = list(resume_agent("does-not-exist", approved=True))
     assert isinstance(events[0], Done)
+
+
+def test_find_contact_then_send_imessage(monkeypatch):
+    # find_contact + send_imessage go through _run_capture, not _run.
+    # send_imessage requires the script to return "OK"; find_contact is fine with it too.
+    monkeypatch.setattr(tools_service, "_run_capture", lambda args: "OK")
+    llm = FakeLLM([
+        _tool_call("find_contact", {"name": "Sarah Kim"}),
+        _tool_call("send_imessage", {
+            "to": "+15551234567", "message": "running late", "display_name": "Sarah Kim",
+        }),
+        {"content": "Sent it."},
+    ])
+    sid = session_service.ensure_session("agent-msg")
+    events = list(run_agent(llm, sid, "text Sarah I'm running late"))
+
+    # find_contact auto-runs; send_imessage pauses for confirmation.
+    assert isinstance(events[0], ToolStarted) and events[0].name == "find_contact"
+    assert isinstance(events[1], ToolResult) and events[1].ok
+    assert isinstance(events[-1], ToolConfirm) and events[-1].name == "send_imessage"
+
+    resumed = list(resume_agent(events[-1].pending_id, approved=True))
+    assert isinstance(resumed[0], ToolStarted) and resumed[0].name == "send_imessage"
+    assert isinstance(resumed[1], ToolResult) and resumed[1].ok
+    assert resumed[-1] == Done("Sent it.")
+    session_service.reset(sid)

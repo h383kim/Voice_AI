@@ -18,16 +18,33 @@ def captured(monkeypatch):
     return calls
 
 
+@pytest.fixture
+def captured_capture(monkeypatch):
+    """Capture calls to _run_capture (find_contact / send_imessage); returns OK."""
+    calls: list[list[str]] = []
+
+    def fake(args):
+        calls.append(args)
+        return "OK"
+
+    monkeypatch.setattr(tools_service, "_run_capture", fake)
+    return calls
+
+
 def test_schemas_cover_all_tools():
     names = {s["function"]["name"] for s in get_tool_schemas()}
-    assert names == {"notify", "open_url", "open_app", "music"}
+    assert names == {
+        "notify", "open_url", "open_app", "music", "find_contact", "send_imessage",
+    }
 
 
 def test_confirmation_flags():
     assert requires_confirmation("open_url") is True
     assert requires_confirmation("open_app") is True
+    assert requires_confirmation("send_imessage") is True
     assert requires_confirmation("notify") is False
     assert requires_confirmation("music") is False
+    assert requires_confirmation("find_contact") is False
 
 
 def test_notify_passes_values_via_argv(captured):
@@ -79,3 +96,77 @@ def test_music_actions_and_volume(captured):
 def test_unknown_tool_raises(captured):
     with pytest.raises(ToolError):
         execute("rm_rf", {})
+
+
+def test_find_contact_builds_argv(captured_capture):
+    execute("find_contact", {"name": "Sarah Kim"})
+    args = captured_capture[0]
+    assert args[0] == "osascript"
+    # Name passed via argv, not interpolated into the AppleScript source.
+    assert args[3] == "Sarah Kim"
+    assert "Sarah Kim" not in args[2]
+
+
+def test_send_imessage_normalizes_handle_and_passes_argv(captured_capture):
+    execute("send_imessage", {"to": "+1 (555) 123-4567", "message": 'hi "there"'})
+    execute("send_imessage", {"to": "sarah@icloud.com", "message": "hello"})
+    # Phone formatting stripped before sending; email left as-is.
+    assert captured_capture[0][-2:] == ["+15551234567", 'hi "there"']
+    assert captured_capture[1][-2:] == ["sarah@icloud.com", "hello"]
+    # Message not spliced into the AppleScript source.
+    assert 'hi "there"' not in captured_capture[0][2]
+
+
+def test_normalize_handle():
+    assert tools_service._normalize_handle("+1 (555) 123-4567") == "+15551234567"
+    assert tools_service._normalize_handle("(555) 123.4567") == "5551234567"
+    assert tools_service._normalize_handle("sarah@icloud.com") == "sarah@icloud.com"
+
+
+def test_normalize_handle_spelled_out_digits():
+    spoken = "zero one zero one two three four five six seven eight"
+    assert tools_service._normalize_handle(spoken) == "01012345678"
+
+
+def test_normalize_handle_country_code(monkeypatch):
+    monkeypatch.setattr(config, "DEFAULT_COUNTRY_CODE", "+82")
+    assert tools_service._normalize_handle("010-1234-5678") == "+821012345678"
+    assert (
+        tools_service._normalize_handle(
+            "zero one zero one two three four five six seven eight"
+        )
+        == "+821012345678"
+    )
+    # Already international -> unchanged.
+    assert tools_service._normalize_handle("+821012345678") == "+821012345678"
+
+
+def test_send_imessage_accepts_spoken_number(captured_capture):
+    execute(
+        "send_imessage",
+        {"to": "zero one zero one two three four five six seven eight", "message": "hi"},
+    )
+    assert captured_capture[0][-2:] == ["01012345678", "hi"]
+
+
+def test_send_imessage_surfaces_failure(monkeypatch):
+    monkeypatch.setattr(
+        tools_service, "_run_capture", lambda args: "ERR -1728: Can't get participant"
+    )
+    with pytest.raises(ToolError, match="ERR -1728"):
+        execute("send_imessage", {"to": "+15551234567", "message": "hi"})
+
+
+def test_send_imessage_rejects_non_handle(captured_capture):
+    with pytest.raises(ToolError):
+        execute("send_imessage", {"to": "Sarah Kim", "message": "hi"})
+    with pytest.raises(ToolError):
+        execute("send_imessage", {"to": "+15551234567", "message": ""})
+    assert captured_capture == []  # nothing sent
+
+
+def test_send_imessage_respects_disabled_flag(captured_capture, monkeypatch):
+    monkeypatch.setattr(config, "IMESSAGE_ENABLED", False)
+    with pytest.raises(ToolError):
+        execute("send_imessage", {"to": "+15551234567", "message": "hi"})
+    assert captured_capture == []
