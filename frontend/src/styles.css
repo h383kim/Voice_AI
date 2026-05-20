@@ -1,0 +1,178 @@
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #1c1c1e;
+  background: #f5f5f7;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.subtitle {
+  margin: 0.25rem 0 1.5rem;
+  color: #6b6b70;
+}
+
+.recorder {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+  flex-wrap: wrap;
+}
+
+button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border: 1px solid #d0d0d5;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: #0a84ff;
+  border-color: #0a84ff;
+  color: #fff;
+}
+
+.upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #6b6b70;
+}
+
+.panel {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-top: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8e8e93;
+  margin-bottom: 0.25rem;
+}
+
+.bubble {
+  padding: 0.5rem 0;
+}
+
+.bubble p {
+  margin: 0;
+}
+
+.bubble.assistant {
+  border-top: 1px solid #ececf0;
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+}
+
+audio {
+  width: 100%;
+}
+
+.timing table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.timing td {
+  padding: 0.2rem 0;
+}
+
+.timing td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #6b6b70;
+}
+
+.error {
+  color: #d70015;
+  font-size: 0.9rem;
+}
+
+.pill {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: #ececf0;
+  color: #6b6b70;
+}
+
+.pill.listening {
+  background: #d9f2e3;
+  color: #0a7d40;
+}
+
+.pill.thinking {
+  background: #fff1cc;
+  color: #8a6d00;
+}
+
+.pill.speaking {
+  background: #d6e9ff;
+  color: #0a5bd0;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: #8e8e93;
+  margin: 0.75rem 0 0;
+}
+
+.pill.confirming {
+  background: #ffe0cc;
+  color: #b25000;
+}
+
+.tool-activity {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: #0a5bd0;
+}
+
+.confirm {
+  background: #fff;
+  border: 1px solid #ffcfa3;
+  border-left: 4px solid #ff9500;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-top: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.confirm .action {
+  margin: 0.25rem 0 0.75rem;
+  font-weight: 600;
+  word-break: break-all;
+}
